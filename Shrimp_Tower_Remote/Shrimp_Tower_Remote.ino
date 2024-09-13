@@ -11,6 +11,7 @@
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 #define SDA 2   //ESP-01S Wiring
 #define SCL 0   //ESP-01S Wiring
+#define BUTTON_PIN 1 //Shared with TX pin but no issue
 
 //Wifi/Server Configuration
 const char* ssid = "Shrimpternet Beacon";
@@ -18,6 +19,13 @@ const char* password = "pimpshrimpin";
 const char* timeAddress = "http://192.168.4.1/time";
 const char* overrideAddress = "http://192.168.4.1/override";
 const char* daylightPeriodAddress = "http://192.168.4.1/daylight-period";
+
+String timeString = "";
+String periodString = "";
+String overrideString = "";
+
+unsigned long previousCycleMillis = 0;
+const int httpUpdateDelayMillis = 3000;
 
 //Devices
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
@@ -58,39 +66,57 @@ void setup() {
   display.print(F("IP Address: "));
   display.println(WiFi.localIP());
   display.display();
-  display.clearDisplay();
-  display.setCursor(0,0);
-  display.println("Initialized.");
-  display.display();
+  delay(500);
 }
 
 void loop() {
-  //Clear display and add basic readout
+  //Store time for manual periodic http updates
+  unsigned long currentMillis = millis();
+  
+  //Clear display and reset cursor
   display.clearDisplay();
   display.setCursor(0,0);
-  display.println(" -SHRIMPTERNET DATA-");
 
   //Do HTTP GET requests and format accordingly
   WiFiClient client;
   HTTPClient http;
 
-  http.begin(client, timeAddress);
-  http.GET();
-  display.print("Time: ");
-  display.println(http.getString());
-  http.end();
+  //Check override button state, active high
+  bool overrideButtonPressed = digitalRead(BUTTON_PIN);
 
-  http.begin(client, daylightPeriodAddress);
-  http.GET();
-  display.print("Period: ");
-  display.println(http.getString());
-  http.end();
+  if (!overrideButtonPressed) {
+    display.println(" -SHRIMPTERNET DATA-");
 
-  http.begin(client, overrideAddress);
-  http.GET();
-  display.print("Override: ");
-  display.println(http.getString());
-  http.end();
+    //Only update data periodically so as to not spam server with updates
+    //TODO: Add rollover protection to this
+    if (currentMillis - previousMillis >= httpUpdateDelayMillis) {
+      //HTTP client is dumb, needs to be reinitialized for address each time rather than using different endpoints for same address
+      http.begin(client, timeAddress);
+      http.GET();
+      display.print("Time: ");
+      display.println(http.getString());
+      http.end();
+
+      http.begin(client, daylightPeriodAddress);
+      http.GET();
+      display.print("Period: ");
+      display.println(http.getString());
+      http.end();
+
+      http.begin(client, overrideAddress);
+      http.GET();
+      display.print("Override: ");
+      display.println(http.getString());
+      http.end();
+    } else {
+      
+    }
+
+    //Brief cycle delay
+    delay(100);
+  } else {
+    
+  }
 
   display.display();
   delay(3000);

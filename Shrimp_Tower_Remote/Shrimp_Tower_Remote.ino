@@ -17,14 +17,15 @@
 const char* ssid = "Shrimpternet Beacon";
 const char* password = "pimpshrimpin";
 const char* timeAddress = "http://192.168.4.1/time";
-const char* overrideAddress = "http://192.168.4.1/override";
 const char* daylightPeriodAddress = "http://192.168.4.1/daylight-period";
+const char* overrideGetAddress = "http://192.168.4.1/override";
+const char* overrideSetAddress = "http://192.168.4.1/override-set";
 
 String timeString = "";
 String periodString = "";
 String overrideString = "";
 
-unsigned long previousCycleMillis = 0;
+unsigned long previousMillis = 0;
 const int httpUpdateDelayMillis = 3000;
 
 //Devices
@@ -43,8 +44,8 @@ void setup() {
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
-  display.println(F("Shrimpternet End-"));
-  display.println(F("point Initializing..."));
+  display.println(F("Shrimpternet Tap"));
+  display.println(F("Initializing..."));
   display.display();
   delay(3000);
 
@@ -85,41 +86,63 @@ void loop() {
   bool overrideButtonPressed = digitalRead(BUTTON_PIN);
 
   if (!overrideButtonPressed) {
+    display.setTextSize(1);
     display.println(" -SHRIMPTERNET DATA-");
 
     //Only update data periodically so as to not spam server with updates
     //TODO: Add rollover protection to this
     if (currentMillis - previousMillis >= httpUpdateDelayMillis) {
       //HTTP client is dumb, needs to be reinitialized for address each time rather than using different endpoints for same address
+      //Time update
       http.begin(client, timeAddress);
       http.GET();
-      display.print("Time: ");
-      display.println(http.getString());
+      timeString = http.getString();
       http.end();
-
+      //Daylight period update
       http.begin(client, daylightPeriodAddress);
       http.GET();
-      display.print("Period: ");
-      display.println(http.getString());
+      periodString = http.getString();
+      http.end();
+      //Override update
+      http.begin(client, overrideGetAddress);
+      http.GET();
+      overrideString = http.getString();
       http.end();
 
-      http.begin(client, overrideAddress);
-      http.GET();
+      //Update display only when new information is received
+      display.print("Time: ");
+      display.println(timeString);
+      display.print("Period: ");
+      display.println(periodString);
       display.print("Override: ");
-      display.println(http.getString());
-      http.end();
-    } else {
-      
+      display.println(overrideString);
+      display.display();
+
+      previousMillis = currentMillis;
     }
 
     //Brief cycle delay
     delay(100);
-  } else {
-    
-  }
+  } else {  //Button was pressed, override requested
+    //HTTP GET request procs the light for override transition on its end
+    http.begin(client, overrideSetAddress);
+    http.GET();
+    overrideString = http.getString();
+    http.end();
 
-  display.display();
-  delay(3000);
+    display.setTextSize(2);
+    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); //Draw black text on lit background
+    display.print("!OVERRIDE!");
+    display.display();
+    delay(200);
+    display.clearDisplay();
+    display.setCursor(0,0);
+    display.setTextColor(SSD1306_WHITE, SSD1306_BLACK); //Draw lit text on black background
+    display.display();
+    delay(200);
+
+    previousMillis = currentMillis - httpUpdateDelayMillis;
+  }
 }
 
 
